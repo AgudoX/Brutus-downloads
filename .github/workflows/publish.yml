@@ -1,0 +1,145 @@
+name: Publish Brutus APK
+on:
+  push:
+    branches: [main]
+    paths: [build.json]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: brutus-public-apk
+  cancel-in-progress: false
+jobs:
+  apk:
+    name: Build and publish verified universal APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Read verified source version
+        id: source
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          data = json.loads(Path('build.json').read_text())
+          sha, run, code = data['sha'], data['run'], data['version_code']
+          assert re.fullmatch('[0-9a-f]{40}', sha)
+          assert type(run) is int and 0 < run < 2000000000 - 100000
+          assert type(code) is int and code == 100000 + run
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write(f'sha={sha}\nrun={run}\ncode={code}\n')
+          PY
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: AgudoX/Brutus
+          ref: ${{ steps.source.outputs.sha }}
+          path: source
+          ssh-key: ${{ secrets.BRUTUS_SOURCE_READ_KEY }}
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/app/art_src/
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: 'platform-tools platforms;android-37.0 build-tools;36.0.0'
+      - name: Resolve workspace
+        working-directory: source
+        run: flutter pub get --enforce-lockfile
+      - name: Prepare stable signing
+        working-directory: source
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          python3 tools/ci/prepare_android.py
+          test -f app/android/key.properties
+      - name: Free unused runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost \
+            "$AGENT_TOOLSDIRECTORY/CodeQL" 2>/dev/null || true
+          df -h /
+          free -m
+      - name: Build universal 64-bit release
+        working-directory: source/app
+        env:
+          VERSION_CODE: ${{ steps.source.outputs.code }}
+        run: flutter build apk --release --target-platform android-arm64,android-x64 --build-number="$VERSION_CODE"
+      - name: Package verified APK
+        id: package
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          SOURCE_RUN: ${{ steps.source.outputs.run }}
+          VERSION_CODE: ${{ steps.source.outputs.code }}
+        run: |
+          short_sha="${SOURCE_SHA:0:8}"
+          name="brutus-apk-${SOURCE_RUN}-${short_sha}-universal.apk"
+          tag="build-${SOURCE_RUN}-${short_sha}"
+          mkdir -p dist
+          cp source/app/build/app/outputs/flutter-apk/app-release.apk "dist/$name"
+          # Exactly the two intended native architectures, no old ARM32 build.
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+          apk = next(Path('dist').glob('*.apk'))
+          with zipfile.ZipFile(apk) as archive:
+              abis = {p.split('/')[1] for p in archive.namelist() if p.startswith('lib/') and p.endswith('.so')}
+              assert abis == {'arm64-v8a', 'x86_64'}, abis
+          PY
+          (cd dist && sha256sum ./*.apk > SHA256SUMS)
+          app_version="$(awk '$1 == "version:" {print $2; exit}' source/app/pubspec.yaml)"
+          {
+            printf 'Commit: %s\nVersión: %s\nVersion code: %s\n' "$SOURCE_SHA" "$app_version" "$VERSION_CODE"
+            printf 'Firma: estable\nAPK: universal de 64 bits\nABI disponibles: arm64-v8a, x86_64\n'
+          } > dist/build-info.txt
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+      - name: Keep build evidence briefly
+        # Optional archive; a storage quota must not block the release upload.
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: brutus-universal-${{ steps.source.outputs.run }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+      - name: Publish complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.package.outputs.tag }}
+        run: |
+          {
+            printf 'Una sola APK para móviles ARM64 y emuladores x86_64. No incluye dispositivos de 32 bits.\n\n'
+            printf 'Descarga la APK y confirma la instalación en Android. Conserva la partida al actualizar una versión con la misma firma.\n\n'
+            cat dist/build-info.txt
+            printf '\nSHA-256:\n\n```\n'; cat dist/SHA256SUMS; printf '```\n'
+          } > notes.md
+          # Draft until all assets exist: clients never see a partial release.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+            gh release edit "$TAG" --draft=false --prerelease --notes-file notes.md
+          else
+            gh release create "$TAG" dist/* --draft --prerelease --title "Brutus $TAG" --notes-file notes.md
+            gh release edit "$TAG" --draft=false --prerelease
+          fi
+          printf '### Brutus publicado\n\n[Descargar APK](https://github.com/AgudoX/Brutus-downloads/releases/tag/%s)\n' "$TAG" >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove private signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/brutus-release.jks" source/app/android/key.properties
