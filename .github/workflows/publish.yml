@@ -110,6 +110,50 @@ jobs:
             printf 'Firma: estable\nAPK: universal de 64 bits\nABI disponibles: arm64-v8a, x86_64\n'
           } > dist/build-info.txt
           printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+      - name: Make delta patches from recent releases
+        # docs/specs/083: phones on one of the last three builds download only
+        # what changed. Optional: a release without patches updates in full.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_RUN: ${{ steps.source.outputs.run }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # The build's intermediates are no longer needed; old APKs need the disk.
+          rm -rf source/app/build source/build
+          gh api "repos/$GH_REPO/releases?per_page=10" > releases.json
+          python3 - <<'PY' > previous.txt
+          import json, os, re
+          run = int(os.environ['SOURCE_RUN'])
+          found = []
+          for r in json.load(open('releases.json')):
+              m = re.fullmatch(r'build-([0-9]+)-([0-9a-f]{8})', r.get('tag_name', ''))
+              if r.get('draft') or not m or int(m[1]) >= run:
+                  continue
+              name = f'brutus-apk-{m[1]}-{m[2]}-universal.apk'
+              if any(a.get('name') == name for a in r.get('assets', [])):
+                  found.append((int(m[1]), r['tag_name'], name))
+          for row in sorted(found, reverse=True)[:3]:
+              print(*row)
+          PY
+          new=(dist/*.apk)
+          while read -r from tag name; do
+            mkdir -p old
+            gh release download "$tag" --pattern "$name" --dir old --clobber
+            out="dist/brutus-patch-${from}-${SOURCE_RUN}.brp"
+            # make also rebuilds the APK from the patch and checks its SHA-256.
+            python3 source/tools/ci/apk_patch.py make "old/$name" "${new[0]}" "$out" \
+              --from-code "$((100000 + from))" --to-code "$((100000 + SOURCE_RUN))"
+            # Above 70 % of the full APK a patch is not worth the rebuild.
+            if [ "$(stat -c %s "$out")" -gt "$(( $(stat -c %s "${new[0]}") * 7 / 10 ))" ]; then
+              rm -f "$out"
+            fi
+            rm -rf old
+          done < previous.txt
+          (cd dist && sha256sum ./*.apk ./*.brp > SHA256SUMS)
+          ls -la dist
       - name: Keep build evidence briefly
         # Optional archive; a storage quota must not block the release upload.
         continue-on-error: true
@@ -128,6 +172,7 @@ jobs:
           {
             printf 'Una sola APK para móviles ARM64 y emuladores x86_64. No incluye dispositivos de 32 bits.\n\n'
             printf 'Descarga la APK y confirma la instalación en Android. Conserva la partida al actualizar una versión con la misma firma.\n\n'
+            printf 'Desde la app, si tienes una de las últimas versiones, se descarga solo lo nuevo (los archivos .brp).\n\n'
             cat dist/build-info.txt
             printf '\nSHA-256:\n\n```\n'; cat dist/SHA256SUMS; printf '```\n'
           } > notes.md
