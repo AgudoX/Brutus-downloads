@@ -179,10 +179,10 @@ jobs:
           # Draft until all assets exist: clients never see a partial release.
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
-            gh release edit "$TAG" --draft=false --prerelease --notes-file notes.md
+            gh release edit "$TAG" --draft=false --prerelease=false --latest --notes-file notes.md
           else
             gh release create "$TAG" dist/* --draft --prerelease --title "Brutus $TAG" --notes-file notes.md
-            gh release edit "$TAG" --draft=false --prerelease
+            gh release edit "$TAG" --draft=false --prerelease=false --latest
           fi
           printf '### Brutus publicado\n\n[Descargar APK](https://github.com/AgudoX/Brutus-downloads/releases/tag/%s)\n' "$TAG" >> "$GITHUB_STEP_SUMMARY"
       - name: Remove private signing material
