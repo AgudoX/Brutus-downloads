@@ -183,7 +183,7 @@ jobs:
           else
             gh release create "$TAG" dist/* --draft --prerelease --title "Brutus $TAG" --notes-file notes.md
           fi
-          gh api "repos/$GH_REPO/releases/tags/$TAG" > draft.json
+          gh api "repos/$GH_REPO/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\")" > draft.json
           base="$(head -n 1 previous.txt | cut -d ' ' -f 1)"
           test -n "$base"
           python3 source/.agents/skills/brutus-deploy/scripts/verify_release.py \
