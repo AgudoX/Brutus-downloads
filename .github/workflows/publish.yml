@@ -177,8 +177,8 @@ jobs:
           } > notes.md
           # Draft until all assets exist: clients never see a partial release.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/* --clobber
             test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true
+            gh release upload "$TAG" dist/* --clobber
             gh release edit "$TAG" --notes-file notes.md
           else
             gh release create "$TAG" dist/* --draft --prerelease --title "Brutus $TAG" --notes-file notes.md
