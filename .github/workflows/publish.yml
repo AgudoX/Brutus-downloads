@@ -111,9 +111,8 @@ jobs:
           } > dist/build-info.txt
           printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
       - name: Make delta patches from recent releases
-        # docs/specs/083: phones on one of the last three builds download only
-        # what changed. Optional: a release without patches updates in full.
-        continue-on-error: true
+        # A supported installed base must have a verified incremental patch.
+        # Failure blocks publication rather than silently forcing a full APK.
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -179,11 +178,21 @@ jobs:
           # Draft until all assets exist: clients never see a partial release.
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
-            gh release edit "$TAG" --draft=false --prerelease=false --latest --notes-file notes.md
+            test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true
+            gh release edit "$TAG" --notes-file notes.md
           else
             gh release create "$TAG" dist/* --draft --prerelease --title "Brutus $TAG" --notes-file notes.md
-            gh release edit "$TAG" --draft=false --prerelease=false --latest
           fi
+          gh api "repos/$GH_REPO/releases/tags/$TAG" > draft.json
+          base="$(head -n 1 previous.txt | cut -d ' ' -f 1)"
+          test -n "$base"
+          python3 source/.agents/skills/brutus-deploy/scripts/verify_release.py \
+            draft.json --stage draft --installed-code "$((100000 + base))" --asset-dir dist
+          gh release edit "$TAG" --draft=false --prerelease=false --latest
+          gh api "repos/$GH_REPO/releases/tags/$TAG" > published.json
+          gh api "repos/$GH_REPO/releases/latest" > latest.json
+          python3 source/.agents/skills/brutus-deploy/scripts/verify_release.py \
+            published.json --latest latest.json --installed-code "$((100000 + base))" --asset-dir dist
           printf '### Brutus publicado\n\n[Descargar APK](https://github.com/AgudoX/Brutus-downloads/releases/tag/%s)\n' "$TAG" >> "$GITHUB_STEP_SUMMARY"
       - name: Remove private signing material
         if: always()
