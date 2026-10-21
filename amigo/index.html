@@ -1,0 +1,75 @@
+<!doctype html>
+<!-- Friend invitation page (docs/specs/084-amigos-enlace-llama-frases.md).
+     Served by GitHub Pages from AgudoX/Brutus-downloads at /amigo/.
+     The code travels after '#', so it never reaches a server; this page
+     only checks its shape, opens Brutus with brutus://amigo/<code> and,
+     if Brutus is not installed, offers the download and the code to copy.
+     No external scripts, fonts or trackers. -->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-w8cfSQfeQLYoAvbTCteMfh5m7i/AQhWG6Bh4ANHJgRk='; style-src 'unsafe-inline'; img-src 'self'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Te invitan a Brutus</title>
+<style>
+  :root { --bg: #17120d; --card: #241c14; --gold: #d9b45a; --text: #f1e6cf; --muted: #b9a888; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+         font-family: Georgia, 'Times New Roman', serif; display: flex; align-items: center; justify-content: center; }
+  main { box-sizing: border-box; width: 100%; max-width: 420px; margin: 16px; padding: 28px 22px;
+         background: var(--card); border: 2px solid var(--gold); border-radius: 14px; text-align: center; }
+  h1 { color: var(--gold); font-size: 28px; margin: 0 0 12px; letter-spacing: 1px; }
+  p { line-height: 1.5; margin: 0 0 16px; }
+  .code { font-family: 'Courier New', monospace; font-size: 30px; letter-spacing: 4px; color: var(--gold); margin: 8px 0 20px; }
+  a.btn, button { display: block; box-sizing: border-box; width: 100%; padding: 14px; margin: 10px 0; border-radius: 10px;
+         font: inherit; font-size: 18px; text-decoration: none; cursor: pointer; border: 2px solid var(--gold); }
+  .gold { background: var(--gold); color: var(--bg); font-weight: bold; }
+  .stone { background: transparent; color: var(--text); }
+  .note { color: var(--muted); font-size: 14px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Te invitan al coliseo</h1>
+  <div id="ok" hidden>
+    <p>Un amigo te reta en <b>Brutus</b>: entrenas en la vida real y tu campeón lucha por ti.</p>
+    <div class="code" id="code"></div>
+    <a class="btn gold" id="open" href="#">Abrir en Brutus</a>
+    <a class="btn stone" href="https://github.com/AgudoX/Brutus-downloads/releases/latest">Descargar Brutus</a>
+    <button class="stone" id="copy" type="button">Copiar código</button>
+    <p class="note">Si aún no tienes Brutus, instálalo y vuelve a abrir este enlace, o pega el código en Amigos.
+      Brutus te preguntará antes de añadir a nadie.</p>
+  </div>
+  <div id="bad" hidden>
+    <p>Este enlace no trae un código de amigo válido. Pídele a tu amigo que te lo vuelva a mandar.</p>
+    <a class="btn stone" href="https://github.com/AgudoX/Brutus-downloads/releases/latest">Descargar Brutus</a>
+  </div>
+</main>
+<script>
+(function () {
+  var raw = '';
+  try { raw = decodeURIComponent(location.hash.slice(1)); } catch (e) {}
+  raw = raw.toUpperCase().replace(/[\s-]/g, '');
+  if (!/^[A-Z0-9]{8}$/.test(raw)) { document.getElementById('bad').hidden = false; return; }
+  var tag = raw.slice(0, 4) + '-' + raw.slice(4);
+  var page = location.origin + location.pathname + '#' + tag;
+  document.getElementById('ok').hidden = false;
+  document.getElementById('code').textContent = tag;
+  var app = 'brutus://amigo/' + tag;
+  var android = /Android/i.test(navigator.userAgent);
+  var open = document.getElementById('open');
+  open.href = android
+    ? 'intent://amigo/' + tag + '#Intent;scheme=brutus;package=com.brutus.brutus;S.browser_fallback_url=' +
+      encodeURIComponent(page) + ';end'
+    : app;
+  var copy = document.getElementById('copy');
+  copy.addEventListener('click', function () {
+    var done = function () { copy.textContent = 'Código copiado'; };
+    if (navigator.clipboard) navigator.clipboard.writeText(tag).then(done, function () {});
+  });
+})();
+</script>
+</body>
+</html>
