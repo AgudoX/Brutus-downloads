@@ -1,8 +1,6 @@
 {
-  "sha": "9dc6846e27fd6800dfd38f6b46e0fd0c04293d97",
-  "run": 89,
-  "version_code": 100089,
-  "attempt": 1,
-  "validation": "manual-focused-tests-private-ci-skipped",
-  "rules_source": "1a3adfdf101ed6a883f28b64e07c758a04783d2d"
+  "sha": "b97491f5d9445b7bf09ea85355a101b1d34f4486",
+  "run": 848,
+  "version_code": 100848,
+  "attempt": 1
 }
