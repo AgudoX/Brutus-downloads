@@ -174,8 +174,8 @@ jobs:
             printf 'Una sola APK para móviles ARM64 y emuladores x86_64. No incluye dispositivos de 32 bits.\n\n'
             printf '## Novedades\n\n'
             printf '%s\n' \
-              '- La Crónica vuelve a estar accesible desde Retos para consultar semanas anteriores.' \
-              '- Se ha afinado el encuadre de algunos retratos de héroes.'
+              '- Las actualizaciones vuelven a descargar el archivo correcto para instalar en Android.' \
+              '- La app comprueba el destino de descarga antes de abrirlo.'
             printf '\n'
             printf 'Descarga la APK y confirma la instalación en Android. Conserva la partida al actualizar una versión con la misma firma.\n\n'
             printf 'Desde la app, si tienes una de las últimas versiones, se descarga solo lo nuevo (los archivos .brp).\n\n'
