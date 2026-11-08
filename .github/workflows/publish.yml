@@ -45,7 +45,9 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /*
-            !/app/art_src/
+            !/app/art_src/bruto/
+            # pubspec.yaml bundles these key-art images; the APK needs them.
+            /app/art_src/bruto/concepts/arena_rivals/vs_key_art/
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
